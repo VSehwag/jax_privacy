@@ -1,5 +1,7 @@
 # JAX-Privacy: Algorithms for Privacy-Preserving Machine Learning in JAX
 
+*This is the modified version of the jax-privacy to train DP-Diffusion models.*
+
 [**Installation**](#installation)
 | [**Reproducing Results**](#reproducing-results)
 | [**Citing**](#citing)
