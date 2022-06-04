@@ -62,7 +62,7 @@ def get_config(config):
               training=dict(
                   batch_size=dict(
                       init_value=4096,
-                      per_device_per_step=64,
+                      per_device_per_step=32,
                       scale_schedule=None,  # example: {'2000': 8, '4000': 16},
                   ),
                   weight_decay=0.0,  # L-2 regularization,
@@ -107,7 +107,7 @@ def get_config(config):
                   ),
                   random_flip=True,
                   random_crop=True,
-                  augmult=16,  # implements arxiv.org/abs/2105.13343
+                  augmult=2,  # implements arxiv.org/abs/2105.13343
                   ),
               evaluation=dict(
                   batch_size=100,
