@@ -152,10 +152,141 @@ def load_image_dataset(
   yield from ds
 
 
+
+def load_unsupervised_face_dataset(
+    *,
+    ds: tf.data.Dataset,
+    normalize_fn: Optional[Callable[[tf.Tensor], tf.Tensor]] = None,
+    label_preprocess_fn: Optional[Callable[[tf.Tensor], tf.Tensor]] = None,
+    num_samples: int,
+    is_training: bool,
+    batch_dims: Sequence[int],
+    dtype: jnp.dtype = jnp.float32,
+    transpose: bool = False,
+    image_size: Tuple[int, int] = (64, 64),
+    random_crop: bool = False,
+    random_flip: bool = False,
+    augmult: int = 0,
+) -> Iterator[Dict[str, chex.Array]]:
+  """Loads the given split of the dataset.
+  Catered to face dataset (celeb_a).
+
+  Args:
+    ds: Dataset without any sharding, pre-processing or augmentation.
+    normalize_fn: function to normalize the images.
+    label_preprocess_fn: function to pre-process the labels.
+    num_samples: number of samples in the dataset split getting loaded.
+    is_training: If true, use training preproc and augmentation.
+    batch_dims: List indicating how to batch the dataset (typically expected to
+      be of shape (num_devices, bs_per_device)
+    dtype: One of float32 or bfloat16 (bf16 may not be supported fully)
+    transpose: If true, employs double transpose trick.
+    image_size: Final image size returned by dataset pipeline. Note that the
+      exact procedure to arrive at this size will depend on the chosen preproc.
+    random_crop: whether to use a random crop of the image or a center crop.
+    random_flip: whether to perform random horizontal flips of the image.
+    augmult: The augmentation multiplicity. Values > 1 will result in each
+      batch being composed of  `batch_size // augmult` unique underlying images,
+      each one copied and separately augmented `augmult` times.
+
+  Yields:
+    A TFDS numpy iterator.
+  """
+  # Do no apply data augmentation if augmult == 0.
+  random_flip = random_flip and augmult
+  random_crop = random_crop and augmult
+
+  total_batch_size = np.prod(batch_dims)
+  ds = ds.shard(jax.process_count(), jax.process_index())
+
+  options = tf.data.Options()
+  options.experimental_threading.private_threadpool_size = 48
+  options.experimental_threading.max_intra_op_parallelism = 1
+  options.experimental_optimization.map_parallelization = True
+  options.experimental_optimization.parallel_batch = True
+
+  # If using augmult, we use determinism.
+  if is_training and augmult == 1:
+    options.experimental_deterministic = False
+  ds = ds.with_options(options)
+
+  if is_training:
+    if jax.process_count() > 1:
+      # Only cache if we are reading a subset of the dataset.
+      ds = ds.cache()
+    ds = ds.repeat()
+    ds = ds.shuffle(buffer_size=10 * total_batch_size, seed=None)
+  elif num_samples % total_batch_size != 0:
+    raise ValueError(f'Test/valid must be divisible by {total_batch_size}')
+
+  # TODO: Refactor code to avoid copying the whole dataloader class for celeb_a
+  # since we only need to change the preprocess fxn
+  def preprocess(data_dict):
+    image = data_dict['image']
+    if random_crop:
+      # Use a larger decoding size to take random crops within decoded image,
+      # e.g. decoding size of 268x268 for 224x224 crops.
+      decoding_size = [int(x * 1.2) for x in image_size]
+    else:
+      decoding_size = image_size
+    image = _decode_and_crop(
+        image_bytes=image,
+        image_size=decoding_size,
+        padding=0,
+    )
+    if normalize_fn:
+      image = normalize_fn(image)
+    label = 0 # dummy label
+    label = tf.cast(label, tf.int32)
+    if label_preprocess_fn:
+      label = label_preprocess_fn(label)
+    if is_training:
+      image, label = augmult_module.apply_augmult(
+          image=image,
+          label=label,
+          image_size=list(decoding_size) + [3],
+          crop_size=list(image_size) + [3],
+          augmult=augmult,
+          random_flip=random_flip,
+          random_crop=random_crop,
+          pad=None,
+      )
+    else:
+      image = tf.reshape(image, list(decoding_size) + [3])
+
+    return image, label
+
+  ds = ds.map(preprocess, num_parallel_calls=AUTOTUNE)
+
+  def transpose_fn(image, label):
+    image = tf.transpose(image, (1, 2, 3, 0))
+    return image, label
+
+  def cast_fn(image, label):
+    image = tf.cast(image, tf.dtypes.as_dtype(dtype))
+    return image, label
+
+  for i, batch_size in enumerate(reversed(batch_dims)):
+    ds = ds.batch(batch_size)
+    if i == 0:
+      # Transpose and cast as needbe.
+      if transpose:
+        ds = ds.map(transpose_fn)  # NHWC -> HWCN
+      # NOTE: You may be tempted to move the casting earlier on in the pipeline,
+      # but for bf16 some operations will end up silently placed on the TPU and
+      # this causes stalls while TF and JAX battle for the accelerator.
+      ds = ds.map(cast_fn)
+
+  ds = ds.map(lambda images, labels: {'images': images, 'labels': labels})
+  ds = ds.prefetch(AUTOTUNE)
+  ds = tfds.as_numpy(ds)
+  yield from ds
+
 def _decode_and_center_crop(
     image_bytes: tf.Tensor,
     jpeg_shape: Optional[tf.Tensor] = None,
     image_size: Sequence[int] = (224, 224),
+    padding: int = 32
 ) -> tf.Tensor:
   """Crops to center of image with padding then scales."""
   if jpeg_shape is None:
@@ -166,8 +297,8 @@ def _decode_and_center_crop(
   # Pad the image with at least 32px on the short edge and take a
   # crop that maintains aspect ratio.
   scale = tf.minimum(
-      tf.cast(image_height, tf.float32) / (image_size[0] + 32),
-      tf.cast(image_width, tf.float32) / (image_size[1] + 32))
+      tf.cast(image_height, tf.float32) / (image_size[0] + padding),
+      tf.cast(image_width, tf.float32) / (image_size[1] + padding))
   padded_center_crop_height = tf.cast(scale * image_size[0], tf.int32)
   padded_center_crop_width = tf.cast(scale * image_size[1], tf.int32)
   offset_height = ((image_height - padded_center_crop_height) + 1) // 2
@@ -183,12 +314,13 @@ def _decode_and_center_crop(
 def _decode_and_crop(
     image_bytes: tf.Tensor,
     image_size: Sequence[int],
+    padding: int = 32,
 ) -> tf.Tensor:
   """Returns processed and resized images."""
   # NOTE: Bicubic resize (1) casts uint8 to float32 and (2) resizes without
   # clamping overshoots. This means values returned will be outside the range
   # [0.0, 255.0] (e.g. we have observed outputs in the range [-51.1, 336.6]).
-  image = _decode_and_center_crop(image_bytes, image_size=image_size)
+  image = _decode_and_center_crop(image_bytes, image_size=image_size, padding=padding)
   assert image.dtype == tf.uint8
   image = tf.image.resize(image, image_size, tf.image.ResizeMethod.BICUBIC)
   return image

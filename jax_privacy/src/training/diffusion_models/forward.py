@@ -40,7 +40,7 @@ class MultiClassForwardFn:
         self._net = net
         self.timesteps = 1000  # Hardcoding 1000 steps for diffusion process
         # TODO: toggle between identical vs random noise for each instance
-        self.identical_noise = True
+        self.identical_noise = False
         self.scalars = self.get_scalars()
 
     def train_init(
@@ -111,6 +111,7 @@ class MultiClassForwardFn:
         # TODO: Make sure that image is in [0, 1]
         images = (2 * images) - 1.0
 
+        # TODO: Ablate along the choice: using identical timesteps for K augmult
         timesteps = jax.random.randint(key=rng, shape=(
             len(images), ), minval=0, maxval=self.timesteps)
         timesteps = timesteps.repeat(images.shape[1])  # [NK] size
@@ -164,9 +165,12 @@ class MultiClassForwardFn:
           logits: logits computed per-example on the mini-batch.
           metrics: metrics computed on the current mini-batch.
         """
-        logits, unused_network_state = self._net.apply(
-            params, network_state, rng, inputs['images'], timesteps={"t": jnp.ones((len(inputs['images']), ))})
-        loss = jnp.mean(self._loss(logits, inputs['labels']))
+        # logits, unused_network_state = self._net.apply(
+        #     params, network_state, rng, inputs['images'], {"t": jnp.ones((len(inputs['images']), ))})
+        # loss = jnp.mean(self._loss(logits, inputs['labels']))
+        # dummy as logits are unused in current code
+        logits = jnp.mean(inputs['images'])
+        loss = jnp.mean(inputs['images'])  # just a dummy number
 
         metrics = {'loss': loss}
         return logits, metrics

@@ -22,8 +22,8 @@ from typing import Any, Dict, Optional
 @dataclasses.dataclass(frozen=True)
 class Split:
 
-  num_samples: int
-  split_content: Optional[Any] = None
+    num_samples: int
+    split_content: Optional[Any] = None
 
 
 _all_dataset_info: Dict[str, Dict[str, Any]] = {
@@ -103,6 +103,25 @@ _all_dataset_info: Dict[str, Dict[str, Any]] = {
             split_content='validation',
         ),
     },
+    'celeb_a': {
+        'num_classes': 40,
+        'train': Split(
+            num_samples=162_770,
+            split_content='train',
+        ),
+        'valid': Split(
+            num_samples=19_867,
+            split_content='validation',
+        ),
+        'train_valid': Split(
+            num_samples=162_770,
+            split_content='train',
+        ),
+        'test': Split(
+            num_samples=19_962,
+            split_content='test',
+        ),
+    },
     'places365': {
         'num_classes': 365,
         'train': Split(
@@ -128,24 +147,24 @@ _all_dataset_info: Dict[str, Dict[str, Any]] = {
 @dataclasses.dataclass(frozen=True)
 class Dataset:
 
-  name: str
-  num_classes: int
-  train: Split
-  eval: Split
+    name: str
+    num_classes: int
+    train: Split
+    eval: Split
 
 
 def get_dataset(name: str, train_split: str, eval_split: str) -> Dataset:
-  if train_split not in ('train', 'train_valid'):
-    raise ValueError(f'Invalid train split: {train_split}.')
-  return Dataset(
-      name=name,
-      num_classes=_all_dataset_info[name]['num_classes'],
-      train=_all_dataset_info[name][train_split],
-      eval=_all_dataset_info[name][eval_split],
-  )
+    if train_split not in ('train', 'train_valid'):
+        raise ValueError(f'Invalid train split: {train_split}.')
+    return Dataset(
+        name=name,
+        num_classes=_all_dataset_info[name]['num_classes'],
+        train=_all_dataset_info[name][train_split],
+        eval=_all_dataset_info[name][eval_split],
+    )
 
 
 def num_samples(name: str, split: str) -> int:
-  if split not in ('train', 'train_valid', 'valid', 'test'):
-    raise ValueError(f'Invalid split: {split}.')
-  return _all_dataset_info[name][split].num_samples
+    if split not in ('train', 'train_valid', 'valid', 'test'):
+        raise ValueError(f'Invalid split: {split}.')
+    return _all_dataset_info[name][split].num_samples

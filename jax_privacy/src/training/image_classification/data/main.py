@@ -22,6 +22,7 @@ from jax_privacy.src.training.image_classification.data import data_info
 from jax_privacy.src.training.image_classification.data import imagenet
 from jax_privacy.src.training.image_classification.data import mnist_cifar_svhn
 from jax_privacy.src.training.image_classification.data import places365
+from jax_privacy.src.training.image_classification.data import celeb_a
 
 
 def build_train_input(
@@ -79,6 +80,15 @@ def build_train_input(
         random_flip=random_flip,
         batch_size_per_device_per_step=batch_size_per_device_per_step,
     )
+  elif dataset.name.lower() == 'celeb_a':
+    return celeb_a.build_train_input_dataset(
+        dataset=dataset,
+        image_size_train=image_size_train,
+        augmult=augmult,
+        random_crop=random_crop,
+        random_flip=random_flip,
+        batch_size_per_device_per_step=batch_size_per_device_per_step,
+    )
   else:
     raise ValueError(f'Invalid dataset: {dataset.name}.')
 
@@ -113,6 +123,12 @@ def build_eval_input(
     )
   elif dataset.name.lower() == 'places365':
     return places365.build_eval_input_dataset(
+        dataset=dataset,
+        image_size_eval=image_size_eval,
+        batch_size_eval=batch_size_eval,
+    )
+  elif dataset.name.lower() == 'celeb_a':
+    return celeb_a.build_eval_input_dataset(
         dataset=dataset,
         image_size_eval=image_size_eval,
         batch_size_eval=batch_size_eval,

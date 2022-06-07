@@ -21,12 +21,14 @@ import chex
 import haiku as hk
 import jax
 import jax.numpy as jnp
-from jax_privacy.src.training.diffusion_models.models import imagenet
+from jax_privacy.src.training.diffusion_models.models import unet, unet_old
 from jax_privacy.src.training.image_classification.models.common import restore_from_path
 import numpy as np
 
 MODELS = {
-    'unet': imagenet.unet,
+    'unet': unet.UNet,
+    'unet_tiny': unet.UNetTiny,
+    'unet_fast': unet_old.unet
 }
 
 
