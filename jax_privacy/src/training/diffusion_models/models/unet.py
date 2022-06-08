@@ -33,14 +33,19 @@ def timestep_embedding(timesteps, dim, max_period=10000):
 
 
 def interp_Nd(images, target_shape):
-    upsample = functools.partial(
-        jax.scipy.ndimage.map_coordinates, order=1, mode='nearest')
+    """
+    Note that a poor implmentation of interpolation can make code 50-100x slower in jax.
+
+    E.g, following jnp.stack([upsample(x, jnp.meshgrid(jnp.arange(target_shape[0]), jnp.arange(target_shape[1]), 
+                                jnp.arange(x.shape[-1]))) for x in images]) 
+        upsampling is 10-50x slower than simply using the in-build verions jax.image.resize(.) 
+    """
     if len(target_shape) == 1:
-        out = jnp.stack([upsample(x,
-                                  jnp.meshgrid(jnp.arange(target_shape[0]), jnp.arange(x.shape[-1]))) for x in images])
+        out = jax.image.resize(
+            images, [len(images), target_shape[0], images.shape[-1]], method="nearest")
     elif len(target_shape) == 2:
-        out = jnp.stack([upsample(x,
-                                  jnp.meshgrid(jnp.arange(target_shape[0]), jnp.arange(target_shape[1]), jnp.arange(x.shape[-1]))) for x in images])
+        out = jax.image.resize(images, [len(
+            images), target_shape[0], target_shape[1], images.shape[-1]], method="nearest")
     else:
         raise ValueError("Only 1-d and 2-d interpolation are supported")
 
@@ -107,8 +112,8 @@ class Upsample(hk.Module):
                  upsampling occurs in the inner-two dimensions.
     """
 
-    def __init__(self, channels, use_conv, dims=2, out_channels=None):
-        super().__init__()
+    def __init__(self, channels, use_conv, dims=2, out_channels=None, name=None):
+        super().__init__(name=name)
         self.channels = channels
         self.out_channels = out_channels or channels
         self.use_conv = use_conv
@@ -146,8 +151,8 @@ class Downsample(hk.Module):
                  downsampling occurs in the inner-two dimensions.
     """
 
-    def __init__(self, channels, use_conv, dims=2, out_channels=None):
-        super().__init__()
+    def __init__(self, channels, use_conv, dims=2, out_channels=None, name=None):
+        super().__init__(name=name)
         self.channels = channels
         self.out_channels = out_channels or channels
         self.use_conv = use_conv
@@ -197,8 +202,9 @@ class ResBlock(hk.Module):
         dims=2,
         up=False,
         down=False,
+        name=None,
     ):
-        super().__init__()
+        super().__init__(name=name)
         self.channels = channels
         self.emb_channels = emb_channels
         self.out_channels = out_channels or channels
@@ -214,11 +220,11 @@ class ResBlock(hk.Module):
         self.updown = up or down
 
         if up:
-            self.h_upd = Upsample(channels, False, dims)
-            self.x_upd = Upsample(channels, False, dims)
+            self.h_upd = Upsample(channels, False, dims, name="upsample_h")
+            self.x_upd = Upsample(channels, False, dims, name="upsample_x")
         elif down:
-            self.h_upd = Downsample(channels, False, dims)
-            self.x_upd = Downsample(channels, False, dims)
+            self.h_upd = Downsample(channels, False, dims, name="downsample_h")
+            self.x_upd = Downsample(channels, False, dims, name="downsample_x")
         else:
             self.h_upd = self.x_upd = Identity()
 
@@ -289,7 +295,6 @@ class AttentionBlock(hk.Module):
 
 
 # TODO: Label all layers/sub-layers properly
-# TODO: Cleanup the order of functions once everything works
 
 class UNetModel(hk.Module):
     """
