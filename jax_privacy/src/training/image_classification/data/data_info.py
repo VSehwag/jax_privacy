@@ -110,16 +110,35 @@ _all_dataset_info: Dict[str, Dict[str, Any]] = {
             split_content='train',
         ),
         'valid': Split(
-            num_samples=19_867,
-            split_content='validation',
+            num_samples=19_800, # total 19_867
+            split_content='validation[:19800]', # test-valid is required to be divisible by 100
         ),
         'train_valid': Split(
             num_samples=162_770,
             split_content='train',
         ),
         'test': Split(
-            num_samples=19_962,
-            split_content='test',
+            num_samples=19_900, # total 19_962
+            split_content='test[:19900]',
+        ),
+    },
+    'lfw': {
+        'num_classes': 10, # dummy number
+        'train': Split(
+            num_samples=13_233,
+            split_content='train',
+        ),
+        'valid': Split(
+            num_samples=13_000, # total 19_867
+            split_content='train[:13000]', # test-valid is required to be divisible by 100
+        ),
+        'train_valid': Split(
+            num_samples=13_000,
+            split_content='train[:13000]',
+        ),
+        'test': Split(
+            num_samples=13_000, # total 19_962
+            split_content='train[:13000]',
         ),
     },
     'places365': {

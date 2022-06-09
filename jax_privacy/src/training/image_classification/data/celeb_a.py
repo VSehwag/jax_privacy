@@ -65,10 +65,10 @@ def build_train_input_dataset(
     Iterator of pairs of training samples with format
     `{'images': images, 'labels': labels}`.
   """
-  assert dataset.name == 'celeb_a'
+  assert dataset.name in ['celeb_a', 'lfw']
 
   ds = tfds.load(
-      'celeb_a',
+      dataset.name,
       split=dataset.train.split_content,
       decoders={'image': tfds.decode.SkipDecoding()},
   )
@@ -103,10 +103,10 @@ def build_eval_input_dataset(
     Iterator of pairs of evaluation samples with format
     `{'images': images, 'labels': labels}`.
   """
-  assert dataset.name == 'celeb_a'
+  assert dataset.name in ['celeb_a', 'lfw']
 
   ds = tfds.load(
-      'celeb_a',
+      dataset.name,
       split=dataset.eval.split_content,
       decoders={'image': tfds.decode.SkipDecoding()},
   )

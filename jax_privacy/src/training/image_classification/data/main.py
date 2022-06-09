@@ -80,7 +80,7 @@ def build_train_input(
         random_flip=random_flip,
         batch_size_per_device_per_step=batch_size_per_device_per_step,
     )
-  elif dataset.name.lower() == 'celeb_a':
+  elif dataset.name.lower() in ['celeb_a', 'lfw']:
     return celeb_a.build_train_input_dataset(
         dataset=dataset,
         image_size_train=image_size_train,
@@ -127,7 +127,7 @@ def build_eval_input(
         image_size_eval=image_size_eval,
         batch_size_eval=batch_size_eval,
     )
-  elif dataset.name.lower() == 'celeb_a':
+  elif dataset.name.lower() in ['celeb_a', 'lfw']:
     return celeb_a.build_eval_input_dataset(
         dataset=dataset,
         image_size_eval=image_size_eval,

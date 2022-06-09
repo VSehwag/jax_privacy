@@ -23,6 +23,7 @@ import chex
 import haiku as hk
 import jax.numpy as jnp
 from jax_privacy.src.training import metrics as metrics_module
+from jax_privacy.src.training.diffusion_models import diffusion as diffusion_model
 import optax
 
 Model = hk.TransformedWithState
@@ -41,7 +42,7 @@ class MultiClassForwardFn:
         self.timesteps = 1000  # Hardcoding 1000 steps for diffusion process
         # TODO: toggle between identical vs random noise for each instance
         self.identical_noise = False
-        self.scalars = self.get_scalars()
+        self.diffusion = diffusion_model.GuassianDiffusion(diffusion_model.TIMESTEPS)
 
     def train_init(
         self,
@@ -61,24 +62,7 @@ class MultiClassForwardFn:
         images = inputs['images']
         timesteps = jnp.ones((len(images), ))
         # Images has shape [NKHWC] (K is augmult).
-        return self._net.init(rng_key, images[:, 0], {"t": timesteps}, is_training=True)
-
-    def get_scalars(self):
-        all_scalars = {}
-        def alpha_bar_scheduler(t): return math.cos(
-            (t / self.timesteps + 0.008) / 1.008 * math.pi / 2)**2
-        all_scalars["beta"] = jnp.asarray([
-            min(
-                1 -
-                alpha_bar_scheduler(t + 1) / alpha_bar_scheduler(t),
-                0.999,
-            ) for t in range(self.timesteps)
-        ]).reshape(-1, 1, 1, 1)  # hardcoding beta_max to 0.999
-
-        all_scalars["beta_log"] = jnp.log(all_scalars["beta"])
-        all_scalars["alpha"] = 1 - all_scalars["beta"]
-        all_scalars["alpha_bar"] = jnp.cumprod(all_scalars["alpha"], axis=0)
-        return all_scalars
+        return self._net.init(rng_key, {"x": images[:, 0], "t": timesteps, "y": None}, is_training=True)
 
     def train_forward(
         self,
@@ -128,13 +112,12 @@ class MultiClassForwardFn:
         else:
             noise = jax.random.normal(
                 key=rng, shape=reshaped_images.shape)
-        alphas = self.scalars["alpha_bar"][timesteps]
-        xt = jnp.sqrt(alphas) * reshaped_images + jnp.sqrt(1 - alphas) * noise
+        xt, _ = self.diffusion.sample_from_forward_process(reshaped_images, timesteps, rng, noise)
 
         all_params = hk.data_structures.merge(params, frozen_params)
 
         pred_noise, network_state = self._net.apply(
-            all_params, network_state, rng, xt, {"t": timesteps}, is_training=True)
+            all_params, network_state, rng, {"x": xt, "t": timesteps, "y": None}, is_training=True)
         loss = self._loss(pred_noise, noise)
 
         # We reshape back to [NK] and average across augmentations.
@@ -143,6 +126,7 @@ class MultiClassForwardFn:
 
         metrics = {"loss": jnp.mean(loss)}
         return jnp.mean(loss), (network_state, metrics, loss)
+
 
     # TODO: Avoid eval or fix the loss in it
     def eval_forward(
@@ -171,6 +155,12 @@ class MultiClassForwardFn:
         # dummy as logits are unused in current code
         logits = jnp.mean(inputs['images'])
         loss = jnp.mean(inputs['images'])  # just a dummy number
+
+        # # sample images
+        # xT = jax.random.normal(rng, inputs['images'].shape)
+        # gen_images, _ = self.diffusion.sample_from_reverse_process(
+        #     self._net, params, network_state, rng, xT, None, 25, True)
+        # jnp.savez("/home/vvikash/jax_privacy/experiments/diffusion_models/lfw_dp_finetuned.npz", images=gen_images)
 
         metrics = {'loss': loss}
         return logits, metrics

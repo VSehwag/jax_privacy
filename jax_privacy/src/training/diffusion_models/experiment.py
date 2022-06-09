@@ -20,6 +20,8 @@ from typing import Any, Dict, Union
 
 from absl import flags
 from absl import logging
+import os
+import dill
 import chex
 import haiku as hk
 import jax
@@ -176,14 +178,15 @@ class Experiment(experiment.AbstractExperiment):
             num_updates = jnp.reshape(num_updates, [-1])[0]
         return self.accountant.compute_current_epsilon(int(num_updates))
 
-    def _model_fn(self, inputs, extra_inputs={}, is_training=False):
+    def _model_fn(self, inputs, is_training=False):
         with self.config.model.model_kwargs.unlocked():
             self.config.model.model_kwargs['num_classes'] = self._num_classes
         model_instance = models.get_model_instance(self.config.model.model_type,
                                                    self.config.model.model_kwargs)
         return model_instance(
-            inputs,
-            extra_inputs,
+            inputs["x"],
+            inputs["t"],
+            inputs["y"],
             is_training=is_training,
         )
 
@@ -227,6 +230,14 @@ class Experiment(experiment.AbstractExperiment):
             # Log dp_epsilon (outside the pmapped _update_func method).
             scalars.update(dp_epsilon=self._compute_epsilon(
                 scalars['update_step']))
+        
+
+        if self.update_step % 100 == 0:
+            # save ckpt to disk
+            checkpoint_dir = "/home/vvikash/jax_privacy/experiments/diffusion_models/results"
+            with open(os.path.join(checkpoint_dir, f"checkpoint_finetune_lfw.pkl"), "wb") as f:
+                dill.dump(
+                    {"params": self._params, "network_state": self._network_state}, f)
 
         # Convert arrays to scalars for logging and storing.
         return jax.tree_map(_to_scalar, scalars)

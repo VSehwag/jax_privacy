@@ -456,15 +456,19 @@ class UNetModel(hk.Module):
         :param y: an [N] array of labels, if class-conditional.
         :return: an [N x H x ... X C] array of outputs.
         """
-        assert (y is not None) == (
-            self.num_classes is not None
-        ), "must specify y if and only if the model is class-conditional"
+
+        ## Turning off this check for now, as jax-privacy automatically 
+        ## passed num_classes to the model
+        # assert (y is not None) == (
+        #     self.num_classes is not None
+        # ), "must specify y if and only if the model is class-conditional"
 
         hs = []
         emb = forward_sequential(self.time_embed, timestep_embedding(
             timesteps, dim=self.model_channels))
-
-        if self.num_classes is not None:
+        
+        # TODO: use num_classes instead of the array y for this check
+        if y is not None:
             assert y.shape == (x.shape[0],)
             emb = emb + forward_sequential(self.label_emb, y)
 
