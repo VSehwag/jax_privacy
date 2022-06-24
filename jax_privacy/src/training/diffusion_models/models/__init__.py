@@ -27,6 +27,7 @@ import numpy as np
 
 MODELS = {
     'unet': unet.UNet,
+    'unet_big_64': unet.UNetBig64,
     'unet_tiny': unet.UNetTiny,
     'unet_fast': unet_old.unet
 }

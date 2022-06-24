@@ -115,7 +115,7 @@ _all_dataset_info: Dict[str, Dict[str, Any]] = {
         ),
         'train_valid': Split(
             num_samples=162_770,
-            split_content='train',
+            split_content='train+validation',
         ),
         'test': Split(
             num_samples=19_900, # total 19_962
